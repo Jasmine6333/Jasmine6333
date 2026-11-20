@@ -121,6 +121,7 @@
   <p class="eyebrow">C-201 · 地上 10 層之第 7 層</p>
   <h1>C-201 住宅 3D 平面模型</h1>
   <p class="meta" id="meta"></p>
+  <p class="meta">渲染風格：現代簡約 · 地板淺橡木 · 牆面暖白</p>
 
   <div class="group" role="group" aria-label="視角">
     <span class="group-label">視角</span>
@@ -164,6 +165,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* =========================================================
    1. 平面資料（單位：公尺）
@@ -188,20 +190,33 @@ const SHAFTS = [
 ];
 
 // 空間：一個空間可由多個矩形組成；label 為標籤位置（省略時取第一個矩形中心）
+/* 渲染風格：現代簡約；地板：淺橡木；牆面：暖白（衛浴為淺灰石材） */
+const STYLE = {
+  oak:       '#d9bf98',  // 淺橡木地板底色
+  tile:      '#d4d3cf',  // 淺灰石材
+  wall:      '#f4efe6',  // 暖白牆面
+  wallCut:   '#7a7068',  // 牆頂剖面
+  white:     '#f5f3ef',  // 白色櫃體
+  lightGrey: '#d6d3cd',  // 淺灰布面
+  wood:      '#c9a679',  // 淺木家具
+  black:     '#2a2a2a',  // 黑色點綴
+  linen:     '#f1eee8',  // 寢具
+};
+
 const ROOMS = [
-  { name: '客廳',       rects: [[5.89, 0.475, 11.325, 4.63]], floor: '#c9ad85' },
-  { name: '玄關',       rects: [[4.81, 0.475, 5.89, 2.40]],   floor: '#8f8a83' },
-  { name: '餐廳',       rects: [[0.475, 2.40, 4.81, 5.35]],   floor: '#c4a57d' },
-  { name: '廚房',       rects: [[0.475, 0.475, 4.81, 2.40]],  floor: '#d3d3cc' },
-  { name: '走道',       rects: [[4.81, 2.40, 5.89, 6.89], [4.81, 6.89, 8.15, 7.85]], floor: '#bfa27a', label: [5.35, 4.3] },
-  { name: '更衣室',     rects: [[0.475, 5.35, 2.97, 6.89]],   floor: '#b08b64' },
-  { name: '練琴空間',   rects: [[2.97, 5.35, 4.81, 6.89]],    floor: '#c4a27c' },
-  { name: '儲藏室',     rects: [[5.89, 4.63, 7.13, 6.89]],    floor: '#a39e95' },
-  { name: '女兒房',     rects: [[7.13, 4.63, 11.325, 6.89]],  floor: '#c9a77e' },
-  { name: '主臥房',     rects: [[0.475, 6.89, 3.45, 10.425], [3.45, 6.89, 4.81, 7.85]], floor: '#a8835d' },
-  { name: '主臥衛浴',   rects: [[3.45, 7.85, 5.53, 10.425]],  floor: '#a3adb0' },
-  { name: '公共衛浴',   rects: [[5.53, 7.85, 7.13, 10.425]],  floor: '#aab4b6' },
-  { name: '書房兼客房', rects: [[7.13, 7.85, 11.325, 10.425], [8.15, 6.89, 11.325, 7.85]], floor: '#b8946c' },
+  { name: '客廳',       rects: [[5.89, 0.475, 11.325, 4.63]], floor: 'oak' },
+  { name: '玄關',       rects: [[4.81, 0.475, 5.89, 2.40]],   floor: 'oak' },
+  { name: '餐廳',       rects: [[0.475, 2.40, 4.81, 5.35]],   floor: 'oak' },
+  { name: '廚房',       rects: [[0.475, 0.475, 4.81, 2.40]],  floor: 'oak' },
+  { name: '走道',       rects: [[4.81, 2.40, 5.89, 6.89], [4.81, 6.89, 8.15, 7.85]], floor: 'oak', label: [5.35, 4.3] },
+  { name: '更衣室',     rects: [[0.475, 5.35, 2.97, 6.89]],   floor: 'oak' },
+  { name: '練琴空間',   rects: [[2.97, 5.35, 4.81, 6.89]],    floor: 'oak' },
+  { name: '儲藏室',     rects: [[5.89, 4.63, 7.13, 6.89]],    floor: 'oak' },
+  { name: '女兒房',     rects: [[7.13, 4.63, 11.325, 6.89]],  floor: 'oak' },
+  { name: '主臥房',     rects: [[0.475, 6.89, 3.45, 10.425], [3.45, 6.89, 4.81, 7.85]], floor: 'oak' },
+  { name: '主臥衛浴',   rects: [[3.45, 7.85, 5.53, 10.425]],  floor: 'tile' },
+  { name: '公共衛浴',   rects: [[5.53, 7.85, 7.13, 10.425]],  floor: 'tile' },
+  { name: '書房兼客房', rects: [[7.13, 7.85, 11.325, 10.425], [8.15, 6.89, 11.325, 7.85]], floor: 'oak' },
 ];
 
 // 陽台：side 為靠建築物的一側（該側不做女兒牆）
@@ -347,6 +362,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.78;
 stage.appendChild(renderer.domElement);
 
 const labelRenderer = new CSS2DRenderer();
@@ -361,8 +378,11 @@ controls.minDistance = 3;
 controls.maxDistance = 40;
 controls.autoRotateSpeed = 1.2;
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xb9b2a6, 1.1));
-const sun = new THREE.DirectionalLight(0xfff4e2, 1.8);
+// 室內環境光（柔和反射）＋ 天光 ＋ 暖色日光
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd8cfc2, 0.3));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
 sun.position.set(5, 13, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -382,6 +402,68 @@ new MutationObserver(applyTheme).observe(document.documentElement, { attributes:
    4. 建立模型
    ========================================================= */
 const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...opts });
+
+// 程式產生的材質貼圖：一張貼圖代表 1.8 × 1.8 m
+const TEX_M = 1.8;
+function makeCanvas(draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  draw(c.getContext('2d'), 1024);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+let seed = 7;
+const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+
+// 淺橡木地板：寬 18 cm、長 90 cm 的長條木板，錯縫排列，帶木紋
+const oakTex = makeCanvas((g, S) => {
+  const rows = 10, plankH = S / rows, plankW = S / 2;
+  for (let r = 0; r < rows; r++) {
+    const off = (r % 3) * plankW / 3;
+    for (let k = -1; k < 3; k++) {
+      const x = k * plankW + off;
+      const v = (rand() - 0.5) * 18;
+      g.fillStyle = `rgb(${217 + v},${191 + v},${152 + v})`;
+      g.fillRect(x, r * plankH, plankW, plankH);
+      g.strokeStyle = 'rgba(120, 84, 48, 0.10)';
+      g.lineWidth = 1.2;
+      for (let i = 0; i < 9; i++) {
+        const y = r * plankH + rand() * plankH;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.bezierCurveTo(x + plankW * 0.3, y + (rand() - 0.5) * 8, x + plankW * 0.7, y + (rand() - 0.5) * 8, x + plankW, y);
+        g.stroke();
+      }
+      g.fillStyle = 'rgba(110, 80, 50, 0.35)';
+      g.fillRect(x, r * plankH, 2, plankH);
+    }
+    g.fillStyle = 'rgba(110, 80, 50, 0.30)';
+    g.fillRect(0, r * plankH, S, 2);
+  }
+});
+
+// 淺灰石材：60 × 60 cm 磚，細縫
+const tileTex = makeCanvas((g, S) => {
+  const n = 3, s = S / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const v = (rand() - 0.5) * 8;
+    g.fillStyle = `rgb(${212 + v},${211 + v},${207 + v})`;
+    g.fillRect(i * s, j * s, s, s);
+  }
+  g.fillStyle = 'rgba(150, 148, 142, 0.6)';
+  for (let i = 0; i <= n; i++) { g.fillRect(i * s - 1, 0, 3, S); g.fillRect(0, i * s - 1, S, 3); }
+});
+
+function floorMat(kind, w, d) {
+  const base = kind === 'tile' ? tileTex : oakTex;
+  const t = base.clone();
+  t.needsUpdate = true;
+  t.repeat.set(w / TEX_M, d / TEX_M);
+  return new THREE.MeshStandardMaterial({ map: t, roughness: kind === 'tile' ? 0.45 : 0.6 });
+}
 
 function box(w, h, d, material) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
@@ -414,7 +496,7 @@ function addLabel(text, sub, x, y) {
 }
 for (const r of ROOMS) {
   for (const [x1, y1, x2, y2] of r.rects) {
-    const f = placeBox(x1, y1, x2, y2, 0, 0.02, mat(r.floor));
+    const f = placeBox(x1, y1, x2, y2, 0, 0.02, floorMat(r.floor, x2 - x1, y2 - y1));
     f.castShadow = false;
     scene.add(f);
   }
@@ -438,12 +520,12 @@ for (const b of BALCONIES) {
 }
 
 // 牆體、柱、管道間（會隨剖切高度重建）
-const wallSide = mat('#f1ece4');
-const wallTop = mat('#5e5650');                 // 牆頂剖面用深色，看得出牆厚
+const wallSide = mat(STYLE.wall, { roughness: 0.92 });
+const wallTop = mat(STYLE.wallCut);             // 牆頂剖面用較深的灰，看得出牆厚
 const wallMats = [wallSide, wallSide, wallTop, wallSide, wallSide, wallSide];
-const colSide = mat('#e4ddd2');
+const colSide = mat(STYLE.wall, { roughness: 0.92 });
 const colMats = [colSide, colSide, wallTop, colSide, colSide, colSide];
-const shaftSide = mat('#cfc6b9');
+const shaftSide = mat('#e9e3d9');
 const shaftMats = [shaftSide, shaftSide, wallTop, shaftSide, shaftSide, shaftSide];
 const glassMat = mat('#bfe0ea', { transparent: true, opacity: 0.35, roughness: 0.1 });
 let structGroup = null;
@@ -499,10 +581,24 @@ function buildStructure(cutH) {
 buildStructure(1.2);
 
 // 家具
+// 現代簡約配色：白、淺灰、淺木色為主，黑色點綴
+const FURN_STYLE = {
+  鞋櫃: STYLE.white, 地毯: '#e7e2d9', 電視櫃: STYLE.white, 電視: STYLE.black, 展示櫃: STYLE.wood,
+  三人沙發: STYLE.lightGrey, 沙發靠背: '#cbc8c1', 貴妃椅: STYLE.lightGrey, 貴妃椅靠背: '#cbc8c1',
+  單椅: STYLE.black, 茶几: STYLE.wood, 邊几: STYLE.black,
+  餐桌: STYLE.wood, 餐椅: STYLE.black, 高櫃: STYLE.white,
+  廚具: STYLE.white, 冰箱: '#cfd1d2',
+  雙人床: STYLE.linen, 單人床: STYLE.linen, 臥榻: STYLE.linen, 床頭板: STYLE.lightGrey, 床頭櫃: STYLE.wood,
+  沙發: STYLE.lightGrey, 衣櫃: STYLE.white, 收納架: STYLE.white,
+  鋼琴: STYLE.black, 琴椅: STYLE.black,
+  書桌: STYLE.wood, 書桌椅: STYLE.black, 休閒椅: STYLE.lightGrey,
+  洗手台: STYLE.white,
+};
 const furnGroup = new THREE.Group();
 for (const f of FURNITURE) {
+  const color = FURN_STYLE[f.name] || f.color;
   const m = placeBox(f.x1, f.y1, f.x2, f.y2, f.z0 || 0, f.h,
-    f.glass ? glassMat : mat(f.color, { roughness: 0.75 }));
+    f.glass ? glassMat : mat(color, { roughness: color === STYLE.black ? 0.5 : 0.75 }));
   if (f.glass) m.castShadow = false;
   furnGroup.add(m);
 }
