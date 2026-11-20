@@ -1,0 +1,581 @@
+<title>C-201 住宅 3D 模型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* 版面概念：整個畫面是 3D 模型，左上角浮著一張像圖框標題欄的操作面板 */
+  :root {
+    --bg: #e9ebe7;
+    --scene: #e3e6e1;
+    --panel: rgba(255, 255, 255, 0.92);
+    --fg: #1d2321;
+    --muted: #5b6561;
+    --line: #cdd3ce;
+    --accent: #2c5f73;
+    --accent-fg: #ffffff;
+    --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141817; --scene: #1a1f1e; --panel: rgba(29, 35, 34, 0.92);
+      --fg: #e6ebe8; --muted: #9ba6a2; --line: #34403c;
+      --accent: #8cc3d6; --accent-fg: #0e1a1f; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141817; --scene: #1a1f1e; --panel: rgba(29, 35, 34, 0.92);
+    --fg: #e6ebe8; --muted: #9ba6a2; --line: #34403c;
+    --accent: #8cc3d6; --accent-fg: #0e1a1f; color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font); overflow: hidden; }
+
+  .stage {
+    position: fixed;
+    inset: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px) 0;
+    background: var(--scene);
+  }
+  .stage canvas { display: block; touch-action: none; }
+  .labels { position: absolute; inset: 0; pointer-events: none; }
+
+  .panel {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    left: calc(env(safe-area-inset-left, 0px) + 16px);
+    width: min(350px, calc(100vw - 32px));
+    max-height: calc(100% - 96px);
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px 16px;
+    display: grid;
+    gap: 10px;
+    backdrop-filter: blur(6px);
+  }
+  .eyebrow { margin: 0; font-size: 11px; letter-spacing: 0.08em; color: var(--muted); }
+  h1 { margin: 0; font-size: 19px; line-height: 1.3; font-weight: 700; text-wrap: balance; }
+  .meta { margin: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.5; }
+  .group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .group-label { width: 100%; font-size: 11px; letter-spacing: 0.06em; color: var(--muted); }
+  button {
+    font: inherit; font-size: 13px;
+    padding: 6px 11px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+  details { border-top: 1px solid var(--line); padding-top: 8px; }
+  summary { cursor: pointer; font-size: 13px; font-weight: 500; }
+  .table-wrap { overflow-x: auto; margin-top: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; }
+  .note { margin: 6px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .hint {
+    position: fixed;
+    right: calc(env(safe-area-inset-right, 0px) + 16px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 5px 10px;
+  }
+  .room-label {
+    font-family: var(--font);
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 12px;
+    line-height: 1.35;
+    text-align: center;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .room-label span { display: block; font-size: 10.5px; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    .panel { padding: 10px 12px; gap: 8px; }
+    h1 { font-size: 16px; }
+    .hint { left: calc(env(safe-area-inset-left, 0px) + 16px); right: auto; }
+    .room-label { font-size: 10.5px; padding: 1px 5px; }
+  }
+</style>
+
+<div class="stage" id="stage"></div>
+
+<section class="panel" aria-label="模型控制">
+  <p class="eyebrow">C-201 · 地上 10 層之第 7 層</p>
+  <h1>C-201 住宅 3D 平面模型</h1>
+  <p class="meta" id="meta"></p>
+
+  <div class="group" role="group" aria-label="視角">
+    <span class="group-label">視角</span>
+    <button type="button" id="btn-persp">透視</button>
+    <button type="button" id="btn-top">俯視</button>
+    <button type="button" id="btn-reset">重設視角</button>
+  </div>
+
+  <div class="group" role="group" aria-label="顯示">
+    <span class="group-label">顯示</span>
+    <button type="button" id="btn-cut" aria-pressed="true">牆體剖切 1.2 m</button>
+    <button type="button" id="btn-furn" aria-pressed="true">家具</button>
+    <button type="button" id="btn-label" aria-pressed="true">空間名稱</button>
+    <button type="button" id="btn-spin" aria-pressed="false">自動旋轉</button>
+  </div>
+
+  <details>
+    <summary>空間座標表</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>空間</th><th>X 範圍</th><th>Y 範圍</th><th>面積</th></tr></thead>
+        <tbody id="room-table"></tbody>
+      </table>
+    </div>
+    <p class="note">單位：公尺。原點為西南角柱外緣，X 向東、Y 向北。外框、柱位、門窗依圖一尺寸；隔間與家具依圖二比例估算，面積為約略值。</p>
+  </details>
+</section>
+
+<p class="hint">拖曳旋轉 · 滾輪或雙指縮放 · 右鍵或雙指拖曳平移</p>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/* =========================================================
+   1. 平面資料（單位：公尺）
+   原點：西南角柱外緣；X 向東、Y 向北（大門 D1 在南側）
+   圖一：外框 11.8 × 10.9 m，柱 0.8 × 0.8 m，RC 外牆 15 cm（外緣內縮 32.5 cm）
+        樓層高度 350 cm、樓板 20 cm → 室內淨高取 3.3 m
+   ========================================================= */
+const PLAN = { W: 11.8, D: 10.9, H: 3.3 };
+
+// 柱位（左下角座標，0.8 × 0.8 m）
+const COLUMNS = [
+  [0, 0], [4.2, 0], [11.0, 0],
+  [0, 4.6], [4.2, 4.6], [11.0, 4.6],
+  [0, 10.1], [4.2, 10.1], [11.0, 10.1],
+];
+
+// 管道間（圖一斜線方塊）
+const SHAFTS = [
+  { x1: 4.75,  y1: 9.80, x2: 5.53,   y2: 10.425 }, // 北側 W3 旁
+  { x1: 10.65, y1: 5.13, x2: 11.325, y2: 5.98 },   // 東側 W4 下方
+  { x1: 0.475, y1: 0.80, x2: 0.92,   y2: 1.40 },   // 西南角 D2 旁
+];
+
+// 空間：一個空間可由多個矩形組成；label 為標籤位置（省略時取第一個矩形中心）
+const ROOMS = [
+  { name: '客廳',       rects: [[5.89, 0.475, 11.325, 4.63]], floor: '#c9ad85' },
+  { name: '玄關',       rects: [[4.81, 0.475, 5.89, 2.40]],   floor: '#8f8a83' },
+  { name: '餐廳',       rects: [[0.475, 2.40, 4.81, 5.35]],   floor: '#c4a57d' },
+  { name: '廚房',       rects: [[0.475, 0.475, 4.81, 2.40]],  floor: '#d3d3cc' },
+  { name: '走道',       rects: [[4.81, 2.40, 5.89, 6.89], [4.81, 6.89, 8.15, 7.85]], floor: '#bfa27a', label: [5.35, 4.3] },
+  { name: '更衣室',     rects: [[0.475, 5.35, 2.97, 6.89]],   floor: '#b08b64' },
+  { name: '練琴空間',   rects: [[2.97, 5.35, 4.81, 6.89]],    floor: '#c4a27c' },
+  { name: '儲藏室',     rects: [[5.89, 4.63, 7.13, 6.89]],    floor: '#a39e95' },
+  { name: '女兒房',     rects: [[7.13, 4.63, 11.325, 6.89]],  floor: '#c9a77e' },
+  { name: '主臥房',     rects: [[0.475, 6.89, 3.45, 10.425], [3.45, 6.89, 4.81, 7.85]], floor: '#a8835d' },
+  { name: '主臥衛浴',   rects: [[3.45, 7.85, 5.53, 10.425]],  floor: '#a3adb0' },
+  { name: '公共衛浴',   rects: [[5.53, 7.85, 7.13, 10.425]],  floor: '#aab4b6' },
+  { name: '書房兼客房', rects: [[7.13, 7.85, 11.325, 10.425], [8.15, 6.89, 11.325, 7.85]], floor: '#b8946c' },
+];
+
+// 陽台：side 為靠建築物的一側（該側不做女兒牆）
+const BALCONIES = [
+  { x1: -0.90, y1: 6.90, x2: 0.325,  y2: 10.25, side: 'east' },
+  { x1: -0.90, y1: 0.66, x2: 0.325,  y2: 4.70,  side: 'east' },
+  { x1: 11.475, y1: 6.90, x2: 12.70, y2: 10.25, side: 'west' },
+  { x1: 11.475, y1: 0.66, x2: 12.70, y2: 4.70,  side: 'west' },
+];
+
+// 門窗表（圖一）：寬、高、窗台高
+const OPEN = {
+  W1:  { type: 'window', sill: 0.6, h: 1.8 },  // 140 寬，下方 40 固定窗
+  W2:  { type: 'window', sill: 1.0, h: 1.4 },
+  W3:  { type: 'window', sill: 1.0, h: 1.4 },
+  W4:  { type: 'window', sill: 1.0, h: 1.4 },
+  DW1: { type: 'window', sill: 0.1, h: 2.3 },  // 落地門窗 320
+  DW2: { type: 'window', sill: 0.1, h: 2.3 },  // 落地門窗 160
+  D1:  { type: 'door',   sill: 0,   h: 2.2 },  // 大門 120
+  D2:  { type: 'door',   sill: 0,   h: 2.1 },  // 陽台門 100
+  d:   { type: 'door',   sill: 0,   h: 2.1 },  // 室內門
+};
+const op = (code, from, to) => ({ ...OPEN[code], code, from, to });
+
+// 牆：a、b 為中心線端點；t 為牆厚；openings 的 from/to 為沿牆方向座標
+const WALLS = [
+  // ---- RC 外牆 15 cm ----
+  { name: '南外牆', t: 0.15, a: [0, 0.40],   b: [11.8, 0.40],  openings: [op('D1', 5.15, 6.35)] },
+  { name: '北外牆', t: 0.15, a: [0, 10.50],  b: [11.8, 10.50], openings: [op('W1', 1.80, 3.20), op('W3', 5.55, 6.25), op('W1', 8.10, 9.50)] },
+  { name: '西外牆', t: 0.15, a: [0.40, 0],   b: [0.40, 10.9],  openings: [op('D2', 1.40, 2.40), op('W2', 3.20, 4.60), op('DW2', 7.70, 9.30)] },
+  { name: '東外牆', t: 0.15, a: [11.40, 0],  b: [11.40, 10.9], openings: [op('DW1', 1.10, 4.30), op('W4', 5.98, 6.68), op('DW2', 7.70, 9.30)] },
+  // ---- 1/2B 磚牆 12 cm（依圖二）----
+  { name: '主臥南牆',       t: 0.12, a: [0.475, 6.89], b: [4.81, 6.89],   openings: [op('d', 0.60, 1.40)] },  // 往更衣室
+  { name: '更衣室/練琴',    t: 0.12, a: [2.97, 5.35],  b: [2.97, 6.89],   openings: [] },
+  { name: '練琴/走道',      t: 0.12, a: [4.81, 5.40],  b: [4.81, 6.89],   openings: [op('d', 5.60, 6.70)] },  // 開放式拉門
+  { name: '主臥入口',       t: 0.12, a: [4.81, 6.89],  b: [4.81, 7.85],   openings: [op('d', 6.98, 7.78)] },
+  { name: '主臥/主臥衛浴',  t: 0.12, a: [3.45, 7.85],  b: [3.45, 10.425], openings: [op('d', 8.70, 9.50)] },
+  { name: '衛浴南牆',       t: 0.12, a: [3.45, 7.85],  b: [8.15, 7.85],   openings: [op('d', 5.65, 6.40)] },  // 公共衛浴門
+  { name: '主臥衛浴/公共衛浴', t: 0.12, a: [5.53, 7.85], b: [5.53, 10.425], openings: [] },
+  { name: '公共衛浴/書房',  t: 0.12, a: [7.13, 7.85],  b: [7.13, 10.425], openings: [] },
+  { name: '書房西牆',       t: 0.12, a: [8.15, 6.89],  b: [8.15, 7.85],   openings: [] },
+  { name: '女兒房北牆',     t: 0.12, a: [5.89, 6.89],  b: [11.325, 6.89], openings: [op('d', 5.97, 6.85), op('d', 7.20, 8.00), op('d', 8.25, 8.95)] }, // 儲藏室、女兒房、書房門
+  { name: '儲藏室/女兒房',  t: 0.12, a: [7.13, 4.63],  b: [7.13, 6.89],   openings: [] },
+  { name: '儲藏室西牆',     t: 0.12, a: [5.89, 4.63],  b: [5.89, 6.89],   openings: [] },
+  { name: '電視牆',         t: 0.12, a: [5.89, 4.63],  b: [11.325, 4.63], openings: [] },
+  { name: '餐廳主牆',       t: 0.12, a: [0.475, 5.35], b: [4.20, 5.35],   openings: [] },
+  { name: '廚房北牆',       t: 0.12, a: [0.475, 2.40], b: [4.81, 2.40],   openings: [op('d', 3.95, 4.75)] },
+  { name: '廚房/玄關',      t: 0.12, a: [4.81, 0.475], b: [4.81, 2.40],   openings: [] },
+];
+
+// 家具：平面範圍 + 高度（z0 為離地高度，預設 0）
+const FURNITURE = [
+  // 玄關
+  { name: '鞋櫃',       x1: 6.46, y1: 0.475, x2: 6.84, y2: 2.85, h: 2.2, color: '#a07e5c' },
+  // 客廳
+  { name: '地毯',       x1: 7.25, y1: 0.95, x2: 10.58, y2: 3.45, h: 0.01, color: '#e4dccd' },
+  { name: '電視櫃',     x1: 6.84, y1: 4.12, x2: 10.05, y2: 4.57, h: 0.45, color: '#6f5440' },
+  { name: '電視',       x1: 8.35, y1: 4.50, x2: 9.45,  y2: 4.56, z0: 1.0, h: 0.65, color: '#1c1c1c' },
+  { name: '展示櫃',     x1: 10.11, y1: 4.15, x2: 10.94, y2: 4.57, h: 2.0, color: '#d8cfc2' },
+  { name: '三人沙發',   x1: 7.97, y1: 0.72, x2: 10.94, y2: 1.43, h: 0.42, color: '#8d9094' },
+  { name: '沙發靠背',   x1: 7.97, y1: 0.50, x2: 10.94, y2: 0.72, h: 0.85, color: '#82868a' },
+  { name: '貴妃椅',     x1: 10.05, y1: 1.43, x2: 10.94, y2: 2.85, h: 0.42, color: '#8d9094' },
+  { name: '貴妃椅靠背', x1: 10.94, y1: 0.50, x2: 11.15, y2: 2.85, h: 0.85, color: '#82868a' },
+  { name: '單椅',       x1: 7.02, y1: 2.08, x2: 7.79, y2: 2.85, h: 0.42, color: '#9a8f84' },
+  { name: '茶几',       x1: 8.20, y1: 2.20, x2: 9.63, y2: 2.85, h: 0.40, color: '#7a5c44' },
+  { name: '邊几',       x1: 6.96, y1: 0.55, x2: 7.73, y2: 1.31, h: 0.50, color: '#7a5c44' },
+  // 餐廳（6 人）
+  { name: '餐桌',       x1: 2.08, y1: 3.45, x2: 2.91, y2: 5.17, h: 0.75, color: '#9c7a58' },
+  { name: '餐椅', x1: 1.54, y1: 4.69, x2: 1.96, y2: 5.11, h: 0.45, color: '#3f3f3f' },
+  { name: '餐椅', x1: 1.54, y1: 4.12, x2: 1.96, y2: 4.54, h: 0.45, color: '#3f3f3f' },
+  { name: '餐椅', x1: 1.54, y1: 3.53, x2: 1.96, y2: 3.95, h: 0.45, color: '#3f3f3f' },
+  { name: '餐椅', x1: 3.03, y1: 4.69, x2: 3.45, y2: 5.11, h: 0.45, color: '#3f3f3f' },
+  { name: '餐椅', x1: 3.03, y1: 4.12, x2: 3.45, y2: 4.54, h: 0.45, color: '#3f3f3f' },
+  { name: '餐椅', x1: 3.03, y1: 3.53, x2: 3.45, y2: 3.95, h: 0.45, color: '#3f3f3f' },
+  { name: '高櫃',       x1: 4.28, y1: 3.45, x2: 4.81, y2: 4.57, h: 2.1, color: '#d8cfc2' },
+  // 廚房
+  { name: '廚具',       x1: 0.95, y1: 0.475, x2: 3.51, y2: 1.075, h: 0.9, color: '#f2f2ef' },
+  { name: '冰箱',       x1: 3.51, y1: 0.475, x2: 4.15, y2: 1.15,  h: 1.85, color: '#c9cccd' },
+  // 主臥房
+  { name: '雙人床',     x1: 1.35, y1: 8.20, x2: 3.25, y2: 10.00, h: 0.5, color: '#ecebe6' },
+  { name: '床頭板',     x1: 3.25, y1: 8.20, x2: 3.39, y2: 10.00, h: 1.1, color: '#6f5440' },
+  { name: '床頭櫃',     x1: 2.90, y1: 7.70, x2: 3.39, y2: 8.15,  h: 0.55, color: '#7a5c44' },
+  { name: '床頭櫃',     x1: 2.90, y1: 10.0, x2: 3.39, y2: 10.40, h: 0.55, color: '#7a5c44' },
+  { name: '沙發',       x1: 0.59, y1: 7.03, x2: 1.25, y2: 7.72,  h: 0.45, color: '#8d9094' },
+  // 更衣室
+  { name: '衣櫃',       x1: 0.55, y1: 5.41, x2: 2.90, y2: 6.00, h: 2.2, color: '#d8cfc2' },
+  // 練琴空間
+  { name: '鋼琴',       x1: 3.15, y1: 5.46, x2: 4.64, y2: 6.06, h: 1.25, color: '#202020' },
+  { name: '琴椅',       x1: 3.55, y1: 6.25, x2: 4.25, y2: 6.55, h: 0.5,  color: '#3f3f3f' },
+  // 主臥衛浴
+  { name: '馬桶',       x1: 3.80, y1: 9.45, x2: 4.28, y2: 10.05, h: 0.42, color: '#fafafa' },
+  { name: '淋浴底盤',   x1: 4.58, y1: 8.67, x2: 5.41, y2: 9.68,  h: 0.05, color: '#e6e8e8' },
+  { name: '淋浴拉門',   x1: 4.56, y1: 8.67, x2: 4.58, y2: 9.68,  h: 2.0,  color: '#bfe0ea', glass: true },
+  { name: '浴缸',       x1: 4.75, y1: 7.95, x2: 5.47, y2: 8.60,  h: 0.55, color: '#f4f4f2' },
+  { name: '洗手台',     x1: 3.55, y1: 7.95, x2: 4.10, y2: 8.75,  h: 0.85, color: '#f4f4f2' },
+  // 公共衛浴
+  { name: '馬桶',       x1: 6.50, y1: 8.79, x2: 7.07, y2: 9.33,  h: 0.42, color: '#fafafa' },
+  { name: '洗手台',     x1: 6.54, y1: 7.95, x2: 7.07, y2: 8.67,  h: 0.85, color: '#f4f4f2' },
+  { name: '淋浴底盤',   x1: 5.59, y1: 9.68, x2: 6.48, y2: 10.42, h: 0.05, color: '#e6e8e8' },
+  { name: '淋浴拉門',   x1: 5.59, y1: 9.66, x2: 6.48, y2: 9.68,  h: 2.0,  color: '#bfe0ea', glass: true },
+  // 書房兼客房
+  { name: '臥榻',       x1: 7.25, y1: 9.00, x2: 9.10, y2: 10.37, h: 0.45, color: '#ecebe6' },
+  { name: '書桌',       x1: 9.27, y1: 8.61, x2: 10.05, y2: 10.33, h: 0.75, color: '#9c7a58' },
+  { name: '書桌椅',     x1: 10.23, y1: 9.15, x2: 10.64, y2: 9.62, h: 0.45, color: '#3f3f3f' },
+  { name: '休閒椅',     x1: 10.23, y1: 7.07, x2: 11.18, y2: 7.96, h: 0.45, color: '#9a8f84' },
+  // 女兒房
+  { name: '單人床',     x1: 9.57, y1: 4.75, x2: 10.46, y2: 6.77, h: 0.5,  color: '#ecebe6' },
+  { name: '衣櫃',       x1: 7.19, y1: 4.69, x2: 8.08,  y2: 5.28, h: 2.2,  color: '#d8cfc2' },
+  { name: '書桌',       x1: 8.08, y1: 4.69, x2: 9.51,  y2: 5.28, h: 0.75, color: '#9c7a58' },
+  { name: '書桌椅',     x1: 8.56, y1: 5.40, x2: 9.04,  y2: 5.88, h: 0.45, color: '#3f3f3f' },
+  // 儲藏室
+  { name: '收納架',     x1: 5.95, y1: 4.69, x2: 7.07, y2: 5.20, h: 2.2, color: '#c9c1b4' },
+  // 西側陽台
+  { name: '洗衣機',     x1: -0.60, y1: 2.61, x2: -0.10, y2: 3.12, h: 0.85, color: '#f0f0f0' },
+  { name: '熱水器',     x1: -0.68, y1: 0.83, x2: -0.24, y2: 1.31, h: 1.2,  color: '#e2e2e2' },
+];
+
+/* =========================================================
+   2. 座標換算：平面 (x, y) → 3D 場景 (X, Z)，北方朝畫面上方
+   ========================================================= */
+const toX = x => x - PLAN.W / 2;
+const toZ = y => -(y - PLAN.D / 2);
+
+/* ---------- 面板文字與座標表 ---------- */
+const rectArea = ([x1, y1, x2, y2]) => (x2 - x1) * (y2 - y1);
+const roomArea = r => r.rects.reduce((s, q) => s + rectArea(q), 0);
+const total = ROOMS.reduce((s, r) => s + roomArea(r), 0);
+document.getElementById('meta').textContent =
+  `3 房 2 廳 2 衛 · 外框 ${PLAN.W} × ${PLAN.D} m · 室內約 ${total.toFixed(0)} m²（約 ${(total / 3.3058).toFixed(1)} 坪，不含陽台）· 淨高 ${PLAN.H} m`;
+const fmt = n => n.toFixed(2).replace(/\.?0+$/, '');
+document.getElementById('room-table').innerHTML = ROOMS.map(r => r.rects.map((q, i) =>
+  `<tr><td>${i === 0 ? r.name : ''}</td><td>${fmt(q[0])}–${fmt(q[2])}</td><td>${fmt(q[1])}–${fmt(q[3])}</td><td class="num">${i === 0 ? roomArea(r).toFixed(1) + ' m²' : ''}</td></tr>`
+).join('')).join('');
+
+/* =========================================================
+   3. 場景、相機、燈光
+   ========================================================= */
+const stage = document.getElementById('stage');
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.className = 'labels';
+stage.appendChild(labelRenderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 3;
+controls.maxDistance = 40;
+controls.autoRotateSpeed = 1.2;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9b2a6, 1.1));
+const sun = new THREE.DirectionalLight(0xfff4e2, 1.8);
+sun.position.set(5, 13, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 11, bottom: -11, near: 1, far: 50 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+function applyTheme() {
+  const c = getComputedStyle(document.documentElement).getPropertyValue('--scene').trim() || '#e3e6e1';
+  scene.background = new THREE.Color(c);
+}
+applyTheme();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* =========================================================
+   4. 建立模型
+   ========================================================= */
+const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...opts });
+
+function box(w, h, d, material) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+// 以平面範圍放置方塊
+function placeBox(x1, y1, x2, y2, z0, h, material) {
+  const m = box(x2 - x1, h, y2 - y1, material);
+  m.position.set(toX((x1 + x2) / 2), z0 + h / 2, toZ((y1 + y2) / 2));
+  return m;
+}
+
+// 樓板
+const slab = placeBox(0, 0, PLAN.W, PLAN.D, -0.2, 0.2, mat('#8a8580'));
+slab.castShadow = false;
+scene.add(slab);
+
+// 地板與空間名稱
+const labels = [];
+function addLabel(text, sub, x, y) {
+  const div = document.createElement('div');
+  div.className = 'room-label';
+  div.innerHTML = sub ? `${text}<span>${sub}</span>` : text;
+  const label = new CSS2DObject(div);
+  label.position.set(toX(x), 0.15, toZ(y));
+  scene.add(label);
+  labels.push(label);
+}
+for (const r of ROOMS) {
+  for (const [x1, y1, x2, y2] of r.rects) {
+    const f = placeBox(x1, y1, x2, y2, 0, 0.02, mat(r.floor));
+    f.castShadow = false;
+    scene.add(f);
+  }
+  const [x1, y1, x2, y2] = r.rects[0];
+  const [lx, ly] = r.label || [(x1 + x2) / 2, (y1 + y2) / 2];
+  addLabel(r.name, `${roomArea(r).toFixed(1)} m²`, lx, ly);
+}
+
+// 陽台：地坪 + 女兒牆（12 cm，高 1.1 m）
+const parapetMat = mat('#e9e4dc');
+for (const b of BALCONIES) {
+  const fl = placeBox(b.x1, b.y1, b.x2, b.y2, -0.2, 0.2, mat('#9aa0a0'));
+  fl.castShadow = false;
+  scene.add(fl);
+  const t = 0.12, ph = 1.1;
+  const outerX = b.side === 'east' ? [b.x1, b.x1 + t] : [b.x2 - t, b.x2];
+  scene.add(placeBox(outerX[0], b.y1, outerX[1], b.y2, 0, ph, parapetMat));
+  scene.add(placeBox(b.x1, b.y1, b.x2, b.y1 + t, 0, ph, parapetMat));
+  scene.add(placeBox(b.x1, b.y2 - t, b.x2, b.y2, 0, ph, parapetMat));
+  addLabel('陽台', '', (b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2);
+}
+
+// 牆體、柱、管道間（會隨剖切高度重建）
+const wallSide = mat('#f1ece4');
+const wallTop = mat('#5e5650');                 // 牆頂剖面用深色，看得出牆厚
+const wallMats = [wallSide, wallSide, wallTop, wallSide, wallSide, wallSide];
+const colSide = mat('#e4ddd2');
+const colMats = [colSide, colSide, wallTop, colSide, colSide, colSide];
+const shaftSide = mat('#cfc6b9');
+const shaftMats = [shaftSide, shaftSide, wallTop, shaftSide, shaftSide, shaftSide];
+const glassMat = mat('#bfe0ea', { transparent: true, opacity: 0.35, roughness: 0.1 });
+let structGroup = null;
+
+function buildStructure(cutH) {
+  if (structGroup) {
+    structGroup.traverse(o => o.geometry && o.geometry.dispose());
+    scene.remove(structGroup);
+  }
+  structGroup = new THREE.Group();
+  const top = Math.min(PLAN.H, cutH);
+
+  for (const [x, y] of COLUMNS) structGroup.add(placeBox(x, y, x + 0.8, y + 0.8, 0, top, colMats));
+  for (const s of SHAFTS) structGroup.add(placeBox(s.x1, s.y1, s.x2, s.y2, 0, top, shaftMats));
+
+  for (const w of WALLS) {
+    const T = w.t;
+    const horizontal = w.a[1] === w.b[1];
+    const fixed = horizontal ? w.a[1] : w.a[0];
+    const s0 = horizontal ? Math.min(w.a[0], w.b[0]) : Math.min(w.a[1], w.b[1]);
+    const s1 = horizontal ? Math.max(w.a[0], w.b[0]) : Math.max(w.a[1], w.b[1]);
+
+    const pieces = [];
+    let cur = s0;
+    for (const o of [...w.openings].sort((p, q) => p.from - q.from)) {
+      pieces.push({ a: cur, b: o.from, z0: 0, z1: PLAN.H });
+      if (o.sill > 0) pieces.push({ a: o.from, b: o.to, z0: 0, z1: o.sill });
+      pieces.push({ a: o.from, b: o.to, z0: o.sill + o.h, z1: PLAN.H });
+      if (o.type === 'window') pieces.push({ a: o.from, b: o.to, z0: o.sill, z1: o.sill + o.h, glass: true });
+      cur = o.to;
+    }
+    pieces.push({ a: cur, b: s1, z0: 0, z1: PLAN.H });
+
+    for (const p of pieces) {
+      const z1 = Math.min(p.z1, cutH);
+      const len = p.b - p.a;
+      const ht = z1 - p.z0;
+      if (len <= 0.001 || ht <= 0.001) continue;
+      const thick = p.glass ? 0.02 : T;
+      const m = box(horizontal ? len : thick, ht, horizontal ? thick : len, p.glass ? glassMat : wallMats);
+      if (p.glass) m.castShadow = false;
+      const mid = (p.a + p.b) / 2;
+      m.position.set(
+        horizontal ? toX(mid) : toX(fixed),
+        p.z0 + ht / 2,
+        horizontal ? toZ(fixed) : toZ(mid)
+      );
+      structGroup.add(m);
+    }
+  }
+  scene.add(structGroup);
+}
+buildStructure(1.2);
+
+// 家具
+const furnGroup = new THREE.Group();
+for (const f of FURNITURE) {
+  const m = placeBox(f.x1, f.y1, f.x2, f.y2, f.z0 || 0, f.h,
+    f.glass ? glassMat : mat(f.color, { roughness: 0.75 }));
+  if (f.glass) m.castShadow = false;
+  furnGroup.add(m);
+}
+scene.add(furnGroup);
+
+/* =========================================================
+   5. 視角切換與按鈕
+   ========================================================= */
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let tween = null;
+
+function viewScale() { return camera.aspect < 1 ? 1.75 : 1; }
+// 寬螢幕時把模型往右移一點，避免被左上角面板擋住
+function viewTarget() { return new THREE.Vector3(camera.aspect > 1.2 ? -2.4 : 0, 0, 0); }
+const VIEWS = {
+  persp: () => { const t = viewTarget(); return { pos: new THREE.Vector3(7.5, 18.5, 12.5).multiplyScalar(viewScale()).add(t), target: t }; },
+  top:   () => { const t = viewTarget(); return { pos: new THREE.Vector3(0, 20 * viewScale(), 0.001).add(t), target: t }; },
+};
+
+function flyTo(name) {
+  const { pos, target } = VIEWS[name]();
+  if (reduceMotion) {
+    camera.position.copy(pos);
+    controls.target.copy(target);
+    return;
+  }
+  tween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: target, start: performance.now(), dur: 800 };
+}
+
+function toggle(btn, fn) {
+  btn.addEventListener('click', () => {
+    const on = btn.getAttribute('aria-pressed') !== 'true';
+    btn.setAttribute('aria-pressed', String(on));
+    fn(on);
+  });
+}
+
+document.getElementById('btn-persp').addEventListener('click', () => flyTo('persp'));
+document.getElementById('btn-top').addEventListener('click', () => flyTo('top'));
+document.getElementById('btn-reset').addEventListener('click', () => flyTo('persp'));
+toggle(document.getElementById('btn-cut'),   on => buildStructure(on ? 1.2 : PLAN.H));
+toggle(document.getElementById('btn-furn'),  on => { furnGroup.visible = on; });
+toggle(document.getElementById('btn-label'), on => { labels.forEach(l => { l.visible = on; }); });
+toggle(document.getElementById('btn-spin'),  on => { controls.autoRotate = on; });
+
+/* =========================================================
+   6. 尺寸調整與繪製迴圈
+   ========================================================= */
+function resize() {
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const start = VIEWS.persp();
+camera.position.copy(start.pos);
+controls.target.copy(start.target);
+
+renderer.setAnimationLoop(now => {
+  if (tween) {
+    const k = Math.min(1, (now - tween.start) / tween.dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    camera.position.lerpVectors(tween.p0, tween.p1, e);
+    controls.target.lerpVectors(tween.t0, tween.t1, e);
+    if (k === 1) tween = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+</script>
